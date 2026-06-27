@@ -1,0 +1,39 @@
+# Datos persistentes (no a git)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Cache HTML scraped
+raw/
+
+# Entornos y secretos
+.env
+.env.local
+*.secret
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node (por si entra build de web)
+node_modules/
+dist/build/
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
