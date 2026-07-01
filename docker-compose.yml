@@ -11,14 +11,20 @@
 #
 # Servicio `api`: FastAPI de solo lectura sobre la misma data/casas.db.
 # Puerto host 8401 (reservado en /volume1/docker/PUERTOS.md). Docs en
-# http://<nas>:8401/docs.
+# http://<nas>:8401/docs. Se expone tanto en publico (via Cloudflare,
+# decision 2026-07-01) como internamente para el proxy de `web`.
 #
-# network_mode: bridge en ambos servicios (en vez de dejar que compose cree
-# una red propia): el NAS aloja muchos proyectos compose y el pool de
-# subredes por defecto de Docker se agota ("could not find an available,
-# non-overlapping IPv4 address pool", detectado 2026-07-01). Ninguno de los
-# dos servicios necesita hablar con otros contenedores todavia (la API no
-# usa vision-router aun), asi que reusan la red bridge por defecto.
+# Servicio `web`: nginx + Alpine.js (paso 4, 2026-07-01). Sirve la web
+# estatica y proxea /api/* hacia `api:8000` usando la red compartida
+# `ia-net`. Puerto host 8400.
+#
+# Red `ia-net`: red bridge YA EXISTENTE en el NAS (usada tambien por
+# vision-router, ver README). Se declara como `external: true` para
+# NO crear una subred nueva -- el NAS aloja muchos proyectos compose y
+# el pool de subredes por defecto de Docker se agota ("could not find
+# an available, non-overlapping IPv4 address pool", detectado
+# 2026-07-01). `scraper` no la necesita (solo hace HTTPS saliente) y
+# sigue en `network_mode: bridge` como hasta ahora.
 services:
   scraper:
     build:
@@ -38,7 +44,8 @@ services:
       context: .
       dockerfile: api/Dockerfile
     image: casa-finder-api:local
-    network_mode: bridge
+    networks:
+      - ia-net
     volumes:
       - ./data:/app/data
     ports:
@@ -46,3 +53,22 @@ services:
     environment:
       - TZ=Europe/Madrid
     restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: casa-finder-web:local
+    networks:
+      - ia-net
+    ports:
+      - "8400:80"
+    environment:
+      - TZ=Europe/Madrid
+    restart: unless-stopped
+    depends_on:
+      - api
+
+networks:
+  ia-net:
+    external: true

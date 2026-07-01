@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAV · Buscador de casas rurales grupales</title>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>
+  :root {
+    --aragon-accent: #b8863b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f6f4ef;
+    color: #2b2b2b;
+  }
+  header {
+    background: #23324a;
+    color: #fff;
+    padding: 1.5rem 1rem;
+    text-align: center;
+  }
+  header h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
+  header p { margin: 0; opacity: 0.8; font-size: 0.9rem; }
+
+  .filters {
+    max-width: 1100px;
+    margin: 1.5rem auto 0;
+    padding: 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-end;
+  }
+  .filters label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+    color: #555;
+    gap: 0.25rem;
+  }
+  .filters input {
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    min-width: 130px;
+  }
+  .filters button {
+    padding: 0.55rem 1rem;
+    border: none;
+    border-radius: 6px;
+    background: #23324a;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .filters button:hover { background: #33456a; }
+
+  .status-bar {
+    max-width: 1100px;
+    margin: 0.75rem auto 0;
+    padding: 0 1rem;
+    font-size: 0.85rem;
+    color: #666;
+  }
+
+  .aragon-banner {
+    max-width: 1100px;
+    margin: 0.75rem auto 0;
+    padding: 0.6rem 1rem;
+    background: #fbf1de;
+    border: 1px solid var(--aragon-accent);
+    border-radius: 8px;
+    color: #6b4c1c;
+    font-size: 0.9rem;
+  }
+
+  .grid {
+    max-width: 1100px;
+    margin: 1rem auto 3rem;
+    padding: 0 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+  }
+  .card.is-aragon {
+    border: 2px solid var(--aragon-accent);
+    box-shadow: 0 0 0 3px rgba(184,134,59,0.15);
+  }
+  .card img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    background: #ddd;
+  }
+  .card .card-body {
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+  }
+  .card h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.25;
+  }
+  .card .location {
+    font-size: 0.85rem;
+    color: #666;
+  }
+  .aragon-badge {
+    display: inline-block;
+    align-self: flex-start;
+    background: var(--aragon-accent);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    margin-bottom: 0.15rem;
+  }
+  .meta-row {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.82rem;
+    color: #444;
+    flex-wrap: wrap;
+  }
+  .price {
+    margin-top: auto;
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: #23324a;
+  }
+  .price small {
+    font-weight: 400;
+    color: #888;
+    font-size: 0.75rem;
+  }
+  .card a.view-link {
+    font-size: 0.82rem;
+    color: #23324a;
+    text-decoration: none;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    text-align: center;
+  }
+  .card a.view-link:hover { background: #f0f0f0; }
+
+  .empty-state, .error-state {
+    max-width: 1100px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    text-align: center;
+    color: #777;
+  }
+  .error-state { color: #a33; }
+
+  footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #999;
+    padding: 1rem;
+  }
+</style>
+</head>
+<body x-data="listingsApp()" x-init="load()">
+
+<header>
+  <h1>GAV · Casas rurales para grupos grandes</h1>
+  <p>Aventura del Verano · Familia España &amp; Co — buscador para futuras escapadas (GAV27+)</p>
+</header>
+
+<div class="filters">
+  <label>
+    Capacidad mínima
+    <input type="number" min="1" x-model.number="filters.min_capacity" @keyup.enter="load()">
+  </label>
+  <label>
+    Región (parcial)
+    <input type="text" placeholder="ej. catalu, arag" x-model="filters.region" @keyup.enter="load()">
+  </label>
+  <label>
+    Precio máx/noche (€)
+    <input type="number" min="0" x-model.number="filters.max_price_per_night" @keyup.enter="load()">
+  </label>
+  <button @click="load()">Filtrar</button>
+  <button @click="reset()" style="background:#888;">Limpiar</button>
+</div>
+
+<div class="status-bar" x-show="!loading && !error">
+  <span x-text="total"></span> casas encontradas
+</div>
+
+<div class="aragon-banner" x-show="aragonCount > 0">
+  🏔️ <span x-text="aragonCount"></span> resultado(s) en Aragón — destacados abajo (preferencia aspiracional de la familia GAV).
+</div>
+
+<div class="empty-state" x-show="!loading && !error && listings.length === 0">
+  No se han encontrado casas con estos filtros. Prueba a bajar la capacidad mínima o quitar la región.
+</div>
+
+<div class="error-state" x-show="error" x-text="error"></div>
+
+<div class="grid" x-show="!loading && listings.length > 0">
+  <template x-for="item in sortedListings" :key="item.key">
+    <div class="card" :class="{ 'is-aragon': isAragon(item) }">
+      <img :src="item.main_image_url || placeholderImg" :alt="item.name" loading="lazy">
+      <div class="card-body">
+        <span class="aragon-badge" x-show="isAragon(item)">Aragón</span>
+        <h3 x-text="item.name"></h3>
+        <div class="location" x-text="[item.location, item.region, item.country].filter(Boolean).join(' · ')"></div>
+        <div class="meta-row">
+          <span x-show="item.capacity_max">👥 hasta <span x-text="item.capacity_max"></span> pax</span>
+          <span x-show="item.bedrooms">🛏️ <span x-text="item.bedrooms"></span> hab.</span>
+          <span x-show="item.bathrooms">🛁 <span x-text="item.bathrooms"></span> baños</span>
+        </div>
+        <div class="price" x-show="item.price_per_night">
+          <span x-text="formatPrice(item.price_per_night, item.price_currency)"></span> <small>/ noche</small>
+        </div>
+        <div class="price" x-show="!item.price_per_night && item.price_per_stay">
+          <span x-text="formatPrice(item.price_per_stay, item.price_currency)"></span> <small>/ estancia</small>
+        </div>
+        <a class="view-link" :href="item.url" target="_blank" rel="noopener">Ver en <span x-text="item.portal"></span></a>
+      </div>
+    </div>
+  </template>
+</div>
+
+<footer>
+  casa-finder · datos de escapadarural (más portales próximamente) · <span x-text="new Date().getFullYear()"></span>
+</footer>
+
+<script>
+function listingsApp() {
+  return {
+    listings: [],
+    total: 0,
+    loading: true,
+    error: null,
+    placeholderImg: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="260" height="160"><rect width="100%" height="100%" fill="%23ddd"/></svg>'
+    ),
+    filters: {
+      min_capacity: 20,
+      region: '',
+      max_price_per_night: null,
+    },
+
+    get aragonCount() {
+      return this.listings.filter(i => this.isAragon(i)).length;
+    },
+
+    get sortedListings() {
+      // Aragón primero (preferencia aspiracional), resto en el orden recibido.
+      return [...this.listings].sort((a, b) => {
+        const aA = this.isAragon(a) ? 0 : 1;
+        const bA = this.isAragon(b) ? 0 : 1;
+        return aA - bA;
+      });
+    },
+
+    isAragon(item) {
+      const r = (item.region || '') + ' ' + (item.location || '');
+      return /arag/i.test(r);
+    },
+
+    formatPrice(value, currency) {
+      if (value === null || value === undefined) return '';
+      const symbol = currency === 'EUR' ? '€' : (currency || '');
+      return `${value.toLocaleString('es-ES')} ${symbol}`;
+    },
+
+    reset() {
+      this.filters = { min_capacity: 20, region: '', max_price_per_night: null };
+      this.load();
+    },
+
+    async load() {
+      this.loading = true;
+      this.error = null;
+      const params = new URLSearchParams();
+      if (this.filters.min_capacity) params.set('min_capacity', this.filters.min_capacity);
+      if (this.filters.region) params.set('region', this.filters.region);
+      if (this.filters.max_price_per_night) params.set('max_price_per_night', this.filters.max_price_per_night);
+      params.set('limit', 100);
+
+      try {
+        const res = await fetch(`/api/listings?${params.toString()}`);
+        if (!res.ok) throw new Error(`API respondió ${res.status}`);
+        const data = await res.json();
+        this.listings = data.items || [];
+        this.total = data.total ?? this.listings.length;
+      } catch (e) {
+        this.error = 'No se pudo cargar el listado. Inténtalo de nuevo en unos minutos.';
+        this.listings = [];
+        this.total = 0;
+      } finally {
+        this.loading = false;
+      }
+    },
+  };
+}
+</script>
+
+</body>
+</html>
