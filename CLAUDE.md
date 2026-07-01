@@ -10,11 +10,11 @@ Referencias iniciales (perfil que buscamos): Mas Huix, Masia Escrigas, Finca Sav
 
 ## Stack
 
-- **Scraper:** Python 3.11 + Playwright (Chromium headless) + cron diario
-- **Persistencia:** SQLite (`data/casas.db`) con tablas `listings`, `prices`, `scrape_runs`
-- **API:** FastAPI (puerto interno 8000 → host **8401**)
-- **Web:** estática con Alpine.js + nginx (puerto interno 80 → host **8400**)
-- **LLM:** llamadas HTTP a `http://vision-router:8003` (red `ia-net`)
+- **Scraper:** Python 3.11 + httpx + BeautifulSoup (SSR, sin Playwright -- YAGNI) + cron diario
+- **Persistencia:** SQLite (`data/casas.db`) con tablas `listings`, `seeds`, `prices`, `scrape_runs`
+- **API:** FastAPI, solo lectura (puerto interno 8000 → host **8401**)
+- **Web:** estática con Alpine.js + nginx (puerto interno 80 → host **8400**), proxy `/api/*` -> `api:8000`
+- **LLM:** llamadas HTTP a `http://vision-router:8003` (red `ia-net`) -- pendiente de integrar
 - **Subdominio público:** `gav.ruizespana.com` vía Cloudflare Tunnel (`cloudflare-maja-2`)
 
 ## Reglas operativas
@@ -25,6 +25,7 @@ Referencias iniciales (perfil que buscamos): Mas Huix, Masia Escrigas, Finca Sav
 4. **Actualizar `HANDOFF.md` y este `CLAUDE.md`** ante decisiones nuevas o lecciones.
 5. **No asumir.** Si no conozco una API o el comportamiento de una librería, lo digo o lo verifico antes de proponer código.
 6. **No tocar otros proyectos del NAS** salvo necesidad explicada.
+7. **No tocar Cloudflare sin confirmar antes con el usuario** -- es infraestructura compartida con otros proyectos del NAS.
 
 ## Cómo añadir un portal
 
@@ -42,8 +43,9 @@ Referencias iniciales (perfil que buscamos): Mas Huix, Masia Escrigas, Finca Sav
 ## Restricciones del NAS
 
 - RAM total: 5.8 GB. Libre habitual: ~700 MB.
-- **Ollama (`vision-ollama`) tiene `mem_limit: 5g`** — arrancarlo expulsa contenedores. Solo a demanda.
+- **Ollama (`vision-ollama`) tiene `mem_limit: 5g`** -- arrancarlo expulsa contenedores. Solo a demanda.
 - Modelos descargados: `qwen2.5vl` (3 GB).
+- **Pool de subredes Docker agotado** ("could not find an available, non-overlapping IPv4 address pool"): no crear redes `compose` nuevas. Para que dos servicios del mismo proyecto se resuelvan por nombre, reusar una red externa ya existente (`ia-net`) declarándola `external: true` en `docker-compose.yml`, en vez de dejar que compose cree una red propia. Servicios que no necesitan hablar con otros contenedores (ej. `scraper`, solo HTTPS saliente) siguen en `network_mode: bridge`.
 
 ## Puertos asignados
 
@@ -54,6 +56,7 @@ Referencias iniciales (perfil que buscamos): Mas Huix, Masia Escrigas, Finca Sav
 
 ## Subdominio
 
-Alta en Cloudflare Zero Trust vía Chrome MCP cuando el servicio esté levantado:
 - Hostname: `gav.ruizespana.com`
-- Service: `http://192.168.1.205:8400` (o nombre interno si están en la misma red)
+- Service esperado: `http://192.168.1.205:8400` (web, no la API).
+- **Estado 2026-07-01:** la ruta existente en Cloudflare Zero Trust ("Synology-MaJa" tunnel, published application routes #16) apunta todavía a `http://192.168.1.205:8401` (API) en vez de 8400. Pendiente de corregir manualmente por el usuario -- Claude no edita Cloudflare sin confirmación explícita (regla 7), y en el intento de esta sesión el dashboard se quedó colgado cargando en la pestaña controlada por la extensión.
+- Decisión 2026-07-01: la API (8401) **no** se expone públicamente. Solo `gav.ruizespana.com` -> 8400 (web). El proxy nginx (`/api/*` -> `api:8000`) es la única vía pública a los datos.
