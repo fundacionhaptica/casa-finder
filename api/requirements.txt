@@ -1,0 +1,13 @@
+# casa-finder — API (FastAPI) deps
+#
+# La logica SQL vive en scraper/store.py (import directo), asi que este
+# requirements.txt solo necesita el framework HTTP + lo que store.py/models.py
+# ya requieren (pydantic). NO instalamos httpx/bs4/lxml aqui: la API nunca
+# scrapea, solo lee data/casas.db.
+
+fastapi~=0.115.0
+uvicorn[standard]~=0.32.0
+
+# Mismo pin que scraper/requirements.txt para consistencia (store.py/models.py
+# importan pydantic directamente).
+pydantic~=2.9.0

@@ -9,12 +9,16 @@
 # /app/data siempre apunta al data/ real del repo, asi que no hace
 # falta pasar --db a mano.
 #
-# network_mode: bridge (en vez de dejar que compose cree una red propia):
-# el NAS aloja muchos proyectos compose y el pool de subredes por defecto
-# de Docker se agota ("could not find an available, non-overlapping IPv4
-# address pool", detectado 2026-07-01). El scraper solo hace HTTPS saliente,
-# no necesita hablar con otros contenedores, asi que reusa la red bridge
-# por defecto en vez de pedir una subred nueva.
+# Servicio `api`: FastAPI de solo lectura sobre la misma data/casas.db.
+# Puerto host 8401 (reservado en /volume1/docker/PUERTOS.md). Docs en
+# http://<nas>:8401/docs.
+#
+# network_mode: bridge en ambos servicios (en vez de dejar que compose cree
+# una red propia): el NAS aloja muchos proyectos compose y el pool de
+# subredes por defecto de Docker se agota ("could not find an available,
+# non-overlapping IPv4 address pool", detectado 2026-07-01). Ninguno de los
+# dos servicios necesita hablar con otros contenedores todavia (la API no
+# usa vision-router aun), asi que reusan la red bridge por defecto.
 services:
   scraper:
     build:
@@ -28,3 +32,17 @@ services:
       - TZ=Europe/Madrid
     # Sin ports: es un CLI, no expone servidor.
     # Sin restart: no debe quedar en loop, se invoca via `run --rm`.
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: casa-finder-api:local
+    network_mode: bridge
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8401:8000"
+    environment:
+      - TZ=Europe/Madrid
+    restart: unless-stopped

@@ -18,6 +18,9 @@ Decisiones:
 - seeds es tabla INDEPENDIENTE de listings: no comparten clave porque las seeds
   no tienen `portal_listing_id` estable. El link futuro seeds<->listings se
   hara por similitud de nombre + ubicacion en la capa API.
+- Las funciones de consulta (list_listings, get_listing, list_seeds, etc.)
+  viven aqui junto al resto de la capa de persistencia — la API (paso 3) es
+  solo una capa HTTP fina encima, sin logica SQL propia.
 """
 
 from __future__ import annotations
@@ -341,4 +344,171 @@ def count_seeds(conn: sqlite3.Connection, source: str | None = None) -> int:
         ).fetchone()
     else:
         row = conn.execute("SELECT COUNT(*) FROM seeds").fetchone()
+    return row[0]
+
+
+# ---------- consultas de lectura para la API (paso 3, 2026-07-01) ----------
+#
+# Viven aqui (no en api/main.py) para mantener toda la logica SQL junto al
+# resto de la capa de persistencia. La API solo llama a estas funciones y
+# serializa el resultado a JSON.
+
+def _listings_where(
+    *,
+    min_capacity: int | None = None,
+    max_capacity: int | None = None,
+    region: str | None = None,
+    country: str | None = None,
+    portal: str | None = None,
+    max_price_per_night: float | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Construye la clausula WHERE compartida entre list_listings y
+    count_listings_filtered, para no duplicar la logica de filtros."""
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+
+    if min_capacity is not None:
+        clauses.append("capacity_max >= :min_capacity")
+        params["min_capacity"] = min_capacity
+    if max_capacity is not None:
+        clauses.append("capacity_max <= :max_capacity")
+        params["max_capacity"] = max_capacity
+    if region:
+        clauses.append("region LIKE :region")
+        params["region"] = f"%{region}%"
+    if country:
+        clauses.append("country = :country")
+        params["country"] = country
+    if portal:
+        clauses.append("portal = :portal")
+        params["portal"] = portal
+    if max_price_per_night is not None:
+        clauses.append(
+            "(price_per_night IS NOT NULL AND price_per_night <= :max_price_per_night)"
+        )
+        params["max_price_per_night"] = max_price_per_night
+
+    where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where_sql, params
+
+
+def list_listings(
+    conn: sqlite3.Connection,
+    *,
+    min_capacity: int | None = 20,
+    max_capacity: int | None = None,
+    region: str | None = None,
+    country: str | None = None,
+    portal: str | None = None,
+    max_price_per_night: float | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[sqlite3.Row]:
+    """Lista listings con filtros opcionales, ordenados por mas recientes."""
+    where_sql, params = _listings_where(
+        min_capacity=min_capacity,
+        max_capacity=max_capacity,
+        region=region,
+        country=country,
+        portal=portal,
+        max_price_per_night=max_price_per_night,
+    )
+    params["limit"] = limit
+    params["offset"] = offset
+    sql = (
+        f"SELECT * FROM listings{where_sql} "
+        "ORDER BY last_seen_at DESC LIMIT :limit OFFSET :offset"
+    )
+    return conn.execute(sql, params).fetchall()
+
+
+def count_listings_filtered(
+    conn: sqlite3.Connection,
+    *,
+    min_capacity: int | None = 20,
+    max_capacity: int | None = None,
+    region: str | None = None,
+    country: str | None = None,
+    portal: str | None = None,
+    max_price_per_night: float | None = None,
+) -> int:
+    """Total de listings que cumplen los mismos filtros que list_listings
+    (para paginacion en la API)."""
+    where_sql, params = _listings_where(
+        min_capacity=min_capacity,
+        max_capacity=max_capacity,
+        region=region,
+        country=country,
+        portal=portal,
+        max_price_per_night=max_price_per_night,
+    )
+    row = conn.execute(f"SELECT COUNT(*) FROM listings{where_sql}", params).fetchone()
+    return row[0]
+
+
+def get_listing(conn: sqlite3.Connection, key: str) -> sqlite3.Row | None:
+    """Una casa por su cache_key ('portal:portal_listing_id')."""
+    return conn.execute("SELECT * FROM listings WHERE key = ?", (key,)).fetchone()
+
+
+def _seeds_where(
+    *,
+    source: str | None = None,
+    decision: str | None = None,
+    min_capacity: int | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Construye la clausula WHERE compartida entre list_seeds y
+    count_seeds_filtered."""
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+
+    if source:
+        clauses.append("source = :source")
+        params["source"] = source
+    if decision:
+        clauses.append("decision = :decision")
+        params["decision"] = decision
+    if min_capacity is not None:
+        clauses.append("capacity_pax >= :min_capacity")
+        params["min_capacity"] = min_capacity
+
+    where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where_sql, params
+
+
+def list_seeds(
+    conn: sqlite3.Connection,
+    *,
+    source: str | None = None,
+    decision: str | None = None,
+    min_capacity: int | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[sqlite3.Row]:
+    """Lista seeds con filtros opcionales."""
+    where_sql, params = _seeds_where(
+        source=source, decision=decision, min_capacity=min_capacity
+    )
+    params["limit"] = limit
+    params["offset"] = offset
+    sql = (
+        f"SELECT * FROM seeds{where_sql} "
+        "ORDER BY id ASC LIMIT :limit OFFSET :offset"
+    )
+    return conn.execute(sql, params).fetchall()
+
+
+def count_seeds_filtered(
+    conn: sqlite3.Connection,
+    *,
+    source: str | None = None,
+    decision: str | None = None,
+    min_capacity: int | None = None,
+) -> int:
+    """Total de seeds que cumplen los mismos filtros que list_seeds
+    (para paginacion en la API)."""
+    where_sql, params = _seeds_where(
+        source=source, decision=decision, min_capacity=min_capacity
+    )
+    row = conn.execute(f"SELECT COUNT(*) FROM seeds{where_sql}", params).fetchone()
     return row[0]
