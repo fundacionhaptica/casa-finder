@@ -20,6 +20,11 @@ Fragilidades conocidas:
   toca ajustar este modulo.
 - Precio en lista = aprox/persona/noche. Precio real requiere meter fechas
   (no implementado en este scraper base).
+- El sitio NO valida el parametro `pagina`: pedir una pagina fuera de rango
+  devuelve el mismo HTML que la pagina 1 (confirmado 2026-07-01), en vez de
+  una lista vacia o 404. Por eso el bucle de paginacion tiene un tope duro
+  MAX_PAGES_PER_REGION ademas del corte por `empty_streak` — no podemos
+  confiar solo en "pagina vacia" para saber que hemos llegado al final.
 """
 
 from __future__ import annotations
@@ -98,6 +103,19 @@ COORDS_RE = re.compile(
 # https://webp.er2.co/es/{provincia}/{ID-10-digitos}/...
 INTERNAL_ID_RE = re.compile(r"webp\.er2\.co/[^/]+/[^/]+/(\d{10,})/")
 
+# Cuantos niveles de ancestro subimos desde el <a> de la ficha buscando el
+# contenedor que agrupa nombre+descripcion+personas+dormitorios+precio.
+# Bug detectado 2026-07-01: con 5 niveles el contenedor seguia vacio (el sitio
+# anade un wrapper extra respecto a la exploracion original); a partir del
+# nivel 6 aparece el texto completo. Subimos el limite con margen.
+MAX_ANCESTOR_CLIMB = 9
+
+# Tope duro de paginas por region. El sitio no valida `pagina`: pedir una
+# fuera de rango devuelve el mismo HTML que la pagina 1 (confirmado
+# 2026-07-01 comparando pagina=1 vs pagina=50 byte a byte), asi que no
+# podemos fiarnos solo del corte por `empty_streak` para no bucle infinito.
+MAX_PAGES_PER_REGION = 15
+
 
 def _normalize_region(name: str) -> str | None:
     """Acepta nombres humanos o slugs y devuelve el slug URL. None si no mapea."""
@@ -171,7 +189,11 @@ class EscapadaRural(BasePortal):
         page = 1
         empty_streak = 0
 
-        while len(out) < remaining and empty_streak < 2:
+        while (
+            len(out) < remaining
+            and empty_streak < 2
+            and page <= MAX_PAGES_PER_REGION
+        ):
             url = f"/casas-rurales-grupos-{region_slug}"
             params = {"pagina": str(page)} if page > 1 else None
             try:
@@ -216,6 +238,13 @@ class EscapadaRural(BasePortal):
             page += 1
             time.sleep(self.request_delay_s)
 
+        if page > MAX_PAGES_PER_REGION:
+            log.warning(
+                "region %s: alcanzado tope MAX_PAGES_PER_REGION=%d sin llenar "
+                "remaining=%d (posible pagina= sin validar en el sitio)",
+                region_slug, MAX_PAGES_PER_REGION, remaining,
+            )
+
         return out
 
     # ---------- parseo de la lista ----------
@@ -240,7 +269,7 @@ class EscapadaRural(BasePortal):
             # Subimos al ancestor que contenga toda la card (heuristico).
             # Pillamos el bloque de texto del primer padre con suficiente contenido.
             container: Tag = a
-            for _ in range(5):
+            for _ in range(MAX_ANCESTOR_CLIMB):
                 if container.parent is None:
                     break
                 container = container.parent
