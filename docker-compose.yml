@@ -1,0 +1,30 @@
+# casa-finder — docker-compose
+#
+# Servicio `scraper`: CLI de un solo uso (no queda corriendo en background).
+# Se invoca puntualmente o desde cron con:
+#   docker compose run --rm scraper python -m scraper.run --only escapadarural --limit 5 --dry-run
+#
+# El volumen ./data:/app/data resuelve el gotcha de DEFAULT_DB_PATH
+# (ver memoria del proyecto, sesion 3 2026-07-01): dentro de Docker
+# /app/data siempre apunta al data/ real del repo, asi que no hace
+# falta pasar --db a mano.
+#
+# network_mode: bridge (en vez de dejar que compose cree una red propia):
+# el NAS aloja muchos proyectos compose y el pool de subredes por defecto
+# de Docker se agota ("could not find an available, non-overlapping IPv4
+# address pool", detectado 2026-07-01). El scraper solo hace HTTPS saliente,
+# no necesita hablar con otros contenedores, asi que reusa la red bridge
+# por defecto en vez de pedir una subred nueva.
+services:
+  scraper:
+    build:
+      context: .
+      dockerfile: scraper/Dockerfile
+    image: casa-finder-scraper:local
+    network_mode: bridge
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Europe/Madrid
+    # Sin ports: es un CLI, no expone servidor.
+    # Sin restart: no debe quedar en loop, se invoca via `run --rm`.
