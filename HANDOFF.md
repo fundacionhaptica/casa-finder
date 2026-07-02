@@ -1,102 +1,65 @@
 # /volume1/docker/casa-finder/HANDOFF.md
 
-_Ultima actualizacion: 2026-07-01 (cierre de sesion 5)_
+_Ultima actualizacion: 2026-07-02 (cierre de sesion 6)_
 
 ## Objetivo
 
-Montar web publica `gav.ruizespana.com` que busque casas de vacaciones grupales (~25 pax) en Espana y sur de Francia. La familia GAV ("Aventura del Verano · Familia Espana & Co") hace un viaje anual desde 2020; en 2026 ya esta elegida **Masia Escrigas (Barcelona)**, asi que la web es para futuros viajes (GAV27+), sin presion de plazo.
+Montar web publica `gav.ruizespana.com` que busque casas de vacaciones grupales (~25 pax) en Espana y sur de Francia. La familia GAV ("La Gran Aventura del Verano · Familia Espana Morales") hace un viaje anual desde 2020; en 2026 ya esta elegida **Masia Escrigas (Barcelona)**, asi que la web es para futuros viajes (GAV27+), sin presion de plazo.
 
-## Completado en sesion 5 (2026-07-01) — Paso 4: Web publica (commit `3817132`)
+## Completado en sesion 6 (2026-07-02)
 
-### `web/dist/index.html` (nuevo)
+### 1. Logo correcto en la cabecera (commits `d5b14c4`, tras un primer intento erroneo)
 
-HTML+JS estatico con Alpine.js (sin build step, `x-data`/`x-model`/`x-for`). Contra `GET /api/listings` (via proxy nginx, ver abajo):
-- Filtros: `min_capacity` (default 20), `region` (parcial), `max_price_per_night`.
-- Grid de tarjetas: imagen, nombre, ubicacion, capacidad, habitaciones, banos, precio/noche o precio/estancia, link al portal original.
-- **Sesgo hacia Aragon** (preferencia aspiracional de la familia, ver decisiones): las tarjetas cuya `region`/`location` matchea `/arag/i` se destacan con borde+badge y se ordenan primero (`sortedListings`), y aparece un banner si hay al menos una.
-- Estados vacio/error manejados explicitamente.
+- Primer intento uso por error `image1.png` (logo cronologico 2020-2026) en vez del logo correcto.
+- El usuario pego en el chat el logo real: sello estilo Hokusai "AVENTURA DEL VERANO · FAMILIA ESPAÑA & CO | 2026". Resultó ser exactamente `image0.png`, que ya existía en `C:\Cowork\IA-local-NAS\casa-finder-design-assets\logos\` desde sesion 2 (memoria antigua decaía "pendiente de descargar" -- estaba desactualizada, el archivo ya estaba ahi).
+- `web/dist/assets/logo.png`: `image0.png` reescalado a 90px + cuantizado a 32 colores (1.6KB) para no engordar la imagen de Docker.
+- Subtitulo del header corregido a peticion explícita: "Buscador de casas para las GAVs de la familia España Morales" (antes un texto generico).
 
-### `web/nginx.conf` + `web/Dockerfile` (nuevo)
+### 2. Filtro por habitaciones minimas + visualizacion de banos (commit `04a2de7`)
 
-- nginx sirve `web/dist/` como estaticos en `/`.
-- `location /api/` hace proxy a `http://api:8000/` (el slash final en ambos hace que nginx sustituya el prefijo, es decir `/api/listings` -> `http://api:8000/listings`). El navegador nunca llama directo al puerto 8401.
-- Imagen base `nginx:1.27-alpine`.
+El usuario pidio que el filtro principal sea **10+ habitaciones** (no capacidad/pax, que a menudo incluye supletorias) y que se vea el numero de banos o el ratio bano/habitacion.
 
-### `docker-compose.yml` (modificado)
+- `scraper/store.py`: nuevo filtro `min_bedrooms` en `_listings_where`, `list_listings`, `count_listings_filtered`. Pasa a ser el filtro por defecto (`min_bedrooms=10`), sustituyendo a `min_capacity` (que antes defaulteaba a 20 y ahora es opcional sin default).
+- `api/main.py`: `GET /listings` expone `min_bedrooms` (default 10).
+- `web/dist/index.html`: input "Habitaciones minimas" (antes "Capacidad minima"); la tarjeta siempre muestra banos ("N/D" si falta el dato) + ratio bano/habitacion cuando ambos existen.
+- **Verificado**: `min_bedrooms=10` (default) -> 4/9 casas; `min_bedrooms=1` -> 9/9. Los banos salen "N/D" para las 9 casas actuales porque **escapadarural no publica ese campo** -- no es un bug, es una limitacion de la fuente de datos. El ratio aparecera solo cuando algun portal futuro (o un fix de scraping) aporte el dato de banos.
 
-- Nuevo servicio `web`: build `web/Dockerfile`, puerto host **8400:80**, `restart: unless-stopped`, `depends_on: api`.
-- **Cambio de red en `web` y `api`**: pasan de `network_mode: bridge` a `networks: [ia-net]` (red bridge externa YA EXISTENTE en el NAS, usada tambien por `vision-router`). Se declara `ia-net` como `external: true` en el compose para NO crear una subred nueva (el pool de Docker esta agotado en este NAS, gotcha ya conocido de sesion 3). Esto permite que `web` resuelva `api` por nombre de servicio Docker, cosa que `network_mode: bridge` no permitia.
-- `scraper` sigue en `network_mode: bridge` sin cambios (no necesita hablar con otros contenedores).
-- `api` mantiene su publish `8401:8000` para acceso directo (LAN), ademas de estar en `ia-net`.
+### Gotcha nuevo: relay manual de imagenes binarias via base64 es fragil por encima de ~10-15KB
 
-### Verificacion end-to-end (contra el NAS real)
-
-```
-docker compose build web          -> OK, casa-finder-web:local
-docker compose up -d web          -> casa-finder-web-1 y casa-finder-api-1 (recreado por cambio de red) Up
-
-curl -s -o /dev/null -w '%{http_code}' http://192.168.1.205:8400/
-  -> 200
-
-curl -s http://192.168.1.205:8400/api/health
-  -> {"status":"ok","listings_count":9,"seeds_count":31}   (proxy nginx -> api funciona)
-
-curl -s http://192.168.1.205:8401/health
-  -> {"status":"ok","listings_count":9,"seeds_count":31}   (api sigue respondiendo directo tras el cambio de red)
-
-curl -s 'http://192.168.1.205:8400/api/listings?min_capacity=20&limit=2'
-  -> total:9, items con todos los campos (via proxy)
-```
-
-### Decision tomada en sesion 5: API no se expone publicamente
-
-El usuario confirmo que con la web publica (8400) es suficiente; la API (8401) se queda solo en LAN/uso interno. No se crea una ruta publica adicional tipo `api-gav.ruizespana.com`.
-
-### Pendiente real: ruta Cloudflare `gav.ruizespana.com` mal apuntada
-
-Se detecto (captura de pantalla del usuario, tunnel "Synology-MaJa", Published application routes, fila 16) que `gav.ruizespana.com` apunta **hoy** a `http://192.168.1.205:8401` (la API), cuando deberia apuntar a **8400** (la web, que es lo que un visitante deberia ver). El usuario confirmo que quiere corregirlo a 8400.
-
-**No se corrigio en esta sesion**: se intento via Claude-in-Chrome MCP (pestana nueva del grupo MCP, no la pestana donde el usuario ya tenia el dashboard abierto) navegando a la URL de edicion del tunnel, pero el dashboard de Cloudflare se quedo colgado en la pantalla de carga (spinner) mas de 20s sin resolver -- probablemente porque esa pestana nueva no comparte sesion/cookies de forma inmediata con el dashboard, o por lentitud propia del SPA. Se abandono el intento automatizado en vez de insistir a ciegas o probar a autenticar (fuera de las reglas: nunca introducir credenciales).
-
-**Accion pendiente para el usuario** (paso manual, 2 minutos): en la pestana de Cloudflare que ya tenia abierta (dash.cloudflare.com -> Networks -> Connectors -> Synology-MaJa -> Published application routes), editar la fila 16 (`gav.ruizespana.com`) y cambiar el target de `http://192.168.1.205:8401` a `http://192.168.1.205:8400`.
-
-## Completado en sesiones anteriores (resumen — detalle completo en el historial de commits y en la memoria del proyecto)
-
-- **Sesion 2 (2026-06-28)**: scraper `escapadarural` completo (httpx+BS4, SQLite 4 tablas, CLI), 31 seeds GAV24 importadas, logos localizados.
-- **Sesion 3 (2026-07-01)**: 3 bugs reales corregidos en el scraper (brotli, ascenso de ancestros, tope de paginacion), gotcha de DB path hardcodeado, `docker-compose.yml` minimo para `scraper` con fix de red (`network_mode: bridge`), gotcha de `git push` con credential.helper.
-- **Sesion 4 (2026-07-01)**: API FastAPI de solo lectura (`api/`), commit `e75f146`. Bug de ruta `{portal_listing_id:path}`. Gotchas operativos de `nas_run_command` (corre dentro del contenedor `nas-mcp`, no en el host; comandos largos pueden timeoutear en foreground aunque terminen bien; NAS compartido con otras automatizaciones).
+Al intentar subir el logo original (37KB -> ~50K caracteres base64) trocenado en chunks de 20000 caracteres para pegarlo via `nas_write_file`, **2 de los 3 chunks se corrompieron silenciosamente** al reconstruir el tool call (probablemente error de transcripcion manual, no del tool en si). `base64 -d` falló con "invalid input". **Leccion**: para archivos binarios (logos, imagenes) que hay que subir al NAS via este canal, primero **reescalar/comprimir agresivamente** (miniatura + cuantizacion de color con Pillow) hasta que el base64 quepa en un unico chunk de ~2-6KB, y **verificar el tamaño exacto** (`wc -c`) tras escribir en el NAS antes de decodificar -- si no coincide con el original, no seguir adelante y volver a intentarlo con un archivo mas pequeño en vez de reintentar el mismo chunk grande.
 
 ## En curso
 
-Nada bloqueante para el codigo. Los 3 servicios (`scraper` on-demand, `api`, `web`) funcionan correctamente en el NAS. Todo commiteado y pusheado a `origin/main` (`3817132`).
+Nada bloqueante. `casa-finder-api-1` y `casa-finder-web-1` arriba y sanos en el NAS (`192.168.1.205:8401` y `:8400`). Todo commiteado y pusheado a `origin/main` (`04a2de7`).
 
-**Bloqueante externo (no de codigo)**: la ruta publica `gav.ruizespana.com` en Cloudflare sigue apuntando al puerto equivocado (8401 en vez de 8400) hasta que el usuario la corrija manualmente -- ver seccion de arriba.
+**Pendiente del usuario (no bloqueante para el codigo)**: la ruta Cloudflare `gav.ruizespana.com` -- el usuario confirmo en sesion 5 que la corregiria el mismo manualmente (apuntaba a 8401/API en vez de 8400/web). No verificado en esta sesion si ya lo hizo.
 
 ## Proximo paso exacto (siguiente sesion)
 
-1. **Verificar si el usuario ya corrigio la ruta Cloudflare** (`gav.ruizespana.com` -> 8400). Si no, recordarselo.
-2. Con eso resuelto, `gav.ruizespana.com` deberia servir la web real -- probar en un navegador normal (no solo curl) que carga bien, que el JS de Alpine se ejecuta y que los filtros funcionan contra datos reales.
-3. **Poblar mas regiones** en `data/casas.db` para que la web tenga un dataset mas realista (ahora mismo: 9 listings, todos escapadarural/cataluna): `docker compose run --rm scraper python -m scraper.run --only escapadarural --regions <region>`.
-4. Despues: portales pendientes por prioridad -- vrbo.com (anti-bot Akamai), booking.com (MCP conversacional, no pipeline), airbnb.com, clubrural.com/gitedegroupe.fr/somrurals.com/calarquer.com.
-5. (Opcional, sin plazo) Integracion con `vision-router` para ranking de similitud con las casas de referencia (Mas Huix, Masia Escrigas, Finca Savanna) -- contrato aun sin definir, ver CLAUDE.md § "Contrato con vision-router".
+**Meter el resto de portales/buscadores.** El usuario confirmo explícitamente empezar por **VRBO** (prioridad alta: 5 de las 31 casas GAV24 vinieron de ahi), sabiendo que tiene anti-bot Akamai y puede llevar una sesion entera. Nada se implemento aun para VRBO en esta sesion (solo se discutió y se aparco por cierre de sesion).
 
-## Decisiones tomadas (acumulado)
+1. Investigar el anti-bot de vrbo.com antes de escribir codigo: probar primero con `httpx` + cabeceras de navegador real (User-Agent, Accept-Language, etc.) como en escapadarural -- **no asumir que hace falta Playwright sin comprobarlo primero** (regla de "no asumir" del CLAUDE.md del proyecto). Si falla con 403/challenge, entonces sí evaluar Playwright.
+2. Seguir el patron ya establecido: `scraper/portals/vrbo.py` heredando de `BasePortal`, registrar en `scraper/run.py` (lista `PORTALS`), documentar quirks del portal (paginacion, JS, cookies, anti-bot) en el README.
+3. Reusar el mismo pipeline de persistencia (`store.py` / `upsert_listing`) -- no debe hacer falta tocar el schema salvo que VRBO exponga campos nuevos utiles.
+4. Probar con `docker compose run --rm scraper python -m scraper.run --only vrbo --limit 5 --dry-run` antes de un scrape completo.
+5. Despues de VRBO, seguir con el resto por prioridad: booking.com (MCP conversacional, NO pipeline), airbnb.com (anti-bot duro), clubrural.com / gitedegroupe.fr / somrurals.com / calarquer.com (sin anti-bot conocido, probablemente mas rapidos aunque aporten menos casas historicas).
+6. Cada portal nuevo aumenta el dataset -- una vez haya mas de un portal, revisar si el filtro `min_bedrooms=10` sigue siendo razonable o si conviene exponerlo como slider en vez de input numerico simple.
+
+## Decisiones tomadas (acumulado, nuevas de sesion 6 al final)
 
 | Decision | Por que |
 |---|---|
-| Sin Playwright (YAGNI) | Escapadarural es SSR, basta httpx+BS4. |
+| Sin Playwright (YAGNI) | Escapadarural es SSR, basta httpx+BS4. A revisar caso a caso para VRBO/Airbnb. |
 | Booking MCP solo conversacional | No para el catalogo persistente. |
 | VRBO alta prioridad futura | 5/31 casas GAV24 vinieron de ahi; anti-bot fuerte. |
 | Tabla `seeds` separada de `listings` | Sin `portal_listing_id` estable en las seeds; link futuro por similitud nombre+ubicacion. |
-| Aragon = preferencia aspiracional | 7 anos de viajes GAV, Aragon nunca aparece; sesgar UI cuando aparezca (implementado en sesion 5). |
-| Web no urgente | GAV26 ya elegido; la web es para GAV27+. |
-| `network_mode: bridge` en scraper | HTTPS saliente unicamente, no necesita resolver otros servicios por nombre. |
-| **(sesion 5)** `web` y `api` migran de `network_mode: bridge` a red externa `ia-net` | `web` necesita resolver `api` por nombre para el proxy; reusar `ia-net` (ya existente) evita crear una subred nueva con el pool agotado. |
-| API sin autenticacion, CORS abierto | Es un dashboard publico de solo lectura, sin datos sensibles (aunque finalmente el cliente solo la llama via proxy, no directo). |
-| **(sesion 5)** API (8401) no se expone publicamente en Cloudflare | El usuario confirmo que con la web publica (8400 via proxy) es suficiente. |
-| `api/Dockerfile` copia solo models.py+store.py del scraper | Evita arrastrar httpx/bs4/lxml a la imagen de la API, que no los necesita. |
+| Aragon = preferencia aspiracional | 7 anos de viajes GAV, Aragon nunca aparece; UI ya sesga visualmente (sesion 5). |
+| `network_mode: bridge` en scraper, red `ia-net` compartida en api+web | Ver sesion 5 / CLAUDE.md. |
+| API (8401) no se expone publicamente | Confirmado de nuevo en sesion 6: con la web publica (8400) es suficiente. |
+| **(sesion 6)** Filtro principal pasa de `min_capacity` (pax) a `min_bedrooms` (habitaciones), default 10 | La capacidad publicada por el portal a menudo incluye supletorias; el numero de habitaciones es un proxy mas fiable para "casa apta para grupo grande", pedido explicito del usuario. |
+| **(sesion 6)** Imagenes binarias grandes se reescalan agresivamente antes de subirlas al NAS via este canal | Relay manual de base64 >15-20KB es propenso a corrupcion silenciosa (ver gotcha arriba). |
 
-## Problemas y soluciones (acumulado, ver tambien memoria del proyecto para el detalle completo)
+## Problemas y soluciones (acumulado, nuevas de sesion 6 al final)
 
 | Problema | Solucion |
 |---|---|
@@ -104,65 +67,60 @@ Nada bloqueante para el codigo. Los 3 servicios (`scraper` on-demand, `api`, `we
 | Ascenso de 5 ancestros insuficiente en `_extract_list_cards` | Subir `MAX_ANCESTOR_CLIMB` a 9. |
 | `?pagina=N` fuera de rango devuelve el mismo HTML que pagina 1, sin fin | Tope duro `MAX_PAGES_PER_REGION = 15`. |
 | `DEFAULT_DB_PATH` hardcodeado a `/app/data/casas.db` crea DB fantasma en bare-metal sin `--db` | Pasar `--db data/casas.db` fuera de Docker, o usar `docker compose run`. |
-| `docker compose run`/`up` falla por pool de subredes agotado | `network_mode: bridge`, o reusar una red externa YA EXISTENTE (`ia-net`) en vez de crear una nueva (sesion 5). |
+| `docker compose run`/`up` falla por pool de subredes agotado | `network_mode: bridge`, o reusar una red externa YA EXISTENTE (`ia-net`). |
 | `git push` falla con "could not read Username" pese a `nas_git_auth_status` en verde | `git -c credential.helper='store --file=/volume1/docker/.deploy/.git-credentials' push origin main`. |
-| Ruta `/listings/{portal}/{portal_listing_id}` 404 generico | `portal_listing_id` de escapadarural contiene `/` -> usar conversor `{portal_listing_id:path}`. |
-| `curl localhost:PUERTO` desde `nas_run_command` da "Connection refused" pese a que el puerto esta publicado | `nas_run_command` corre dentro del contenedor `nas-mcp`, no en el host -> usar la IP LAN real (`192.168.1.205`) en vez de `localhost`. |
-| Un resultado de `nas_run_command` parecio devolver la salida de otro comando (NAS compartido con otras automatizaciones/sesiones) | Envolver comandos con marcadores `echo MARKER_X ... echo MARKER_END` para verificar sin ambiguedad la correspondencia comando->salida. |
-| **(sesion 5)** Ruta Cloudflare `gav.ruizespana.com` apuntaba al puerto de la API (8401) en vez de la web (8400) | Detectado por el usuario via captura de pantalla; pendiente de correccion manual (ver "Proximo paso"). No es un bug de codigo, es config externa desactualizada respecto al plan. |
-| **(sesion 5)** Dashboard de Cloudflare colgado en spinner de carga al navegar desde una pestana nueva del grupo MCP de Claude-in-Chrome | No se investigo la causa raiz (podria ser session/cookies no compartidas de inmediato, o lentitud del SPA); se abandono el intento tras ~20s en vez de insistir a ciegas o intentar autenticar manualmente. Para cambios rapidos de un solo campo en dashboards ya abiertos por el usuario, puede ser mas eficiente pedirle que lo haga el mismo. |
+| Ruta `/listings/{portal}/{portal_listing_id}` 404 generico | Conversor `{portal_listing_id:path}`. |
+| `curl localhost:PUERTO` desde `nas_run_command` da "Connection refused" | Usar la IP LAN real (`192.168.1.205`), nunca `localhost`. |
+| `nas_run_command` en foreground puede reportar timeout aunque el proceso termine bien server-side | Usar `background=True` + `nas_job_status`, o verificar directamente con un comando corto (`docker ps`) si hay dudas -- confirmado varias veces mas en sesion 6. |
+| **(sesion 6)** Relay manual de base64 de un logo de 37KB (~50K caracteres) corrompido en 2 de 3 chunks de 20000 caracteres | Reescalar/cuantizar la imagen con Pillow hasta que quepa en un chunk unico de pocos KB, y verificar `wc -c` exacto tras escribir antes de decodificar. |
+| **(sesion 6)** Cloudflare dashboard colgado en spinner al navegar desde pestana nueva de Claude-in-Chrome MCP (visto tambien en sesion 5) | No se investigo la causa; para ediciones triviales en un dashboard que el usuario ya tiene abierto y logueado, mejor pedirselo directamente. |
 
-## Lecciones nuevas (para futuras sesiones)
+## Lecciones nuevas (sesion 6, para futuras sesiones)
 
-- Ante un fallo silencioso (0 resultados, sin excepcion), diagnosticar en capas: 1) respuesta HTTP cruda, 2) comparar con lo que espera el codigo, 3) reproducir paso a paso en el interprete real. Evita "arreglar a ciegas".
-- Un sitio que no valida parametros de paginacion puede convertir un bug de filtrado en un bucle sin techo aparente -- los bucles de paginacion necesitan SIEMPRE un tope duro.
-- En rutas FastAPI/Starlette, si un segmento de path puede contener `/` (ej IDs compuestos tipo "categoria/slug"), usar el conversor `{param:path}` desde el principio -- no asumir que un ID nunca tendra `/`.
-- En este NAS: `nas_run_command` ejecuta dentro de un contenedor (`nas-mcp`), no en el host -- para probar servicios de OTROS contenedores usar la IP LAN del NAS, nunca `localhost`.
-- En este NAS: `nas_git_auth_status` en verde no garantiza que `git push` funcione desde `nas_run_command` -- pasar el `credential.helper` explicito en el comando.
-- Comandos largos (docker build, etc.) pueden superar el timeout de `nas_run_command` incluso cuando el proceso termina bien server-side -- usar `background=True` + `nas_job_status`, y verificar con un comando corto si hay dudas.
-- El NAS puede estar compartido con otras automatizaciones al mismo tiempo (visto: jobs de `n8n-mcp` corriendo en paralelo) -- en comandos cortos ambiguos, usar marcadores `echo MARKER...` para confirmar que la salida corresponde al comando enviado.
-- **(sesion 5)** Si dos servicios Docker Compose necesitan resolverse por nombre y el NAS tiene el pool de subredes agotado, la solucion no es "crear una red nueva mas pequena" sino **reusar una red bridge externa ya existente** (`external: true` en el compose) que otro proyecto del NAS ya creo (ej. `ia-net`). Evita el problema de raiz sin negociar tamanos de subred.
-- **(sesion 5)** No dar por hecho que una configuracion externa (Cloudflare, DNS, etc.) coincide con el plan documentado -- verificar el estado real (screenshot o dashboard) antes de asumir que "solo falta levantar el contenedor". En este caso la ruta llevaba tiempo apuntando al puerto equivocado sin que nadie lo hubiera notado.
-- **(sesion 5)** Para ediciones triviales de un solo campo en un dashboard que el usuario YA tiene abierto y logueado, considerar pedirselo directamente en vez de replicar la navegacion en una pestana nueva del MCP (que puede no tener sesion activa de inmediato y quedarse colgada).
+- Antes de asumir que un archivo de assets "falta" o esta "pendiente", comprobar primero si ya existe en la carpeta del proyecto -- la memoria persistente puede quedar desactualizada (el logo del sello llevaba ya descargado desde sesion 2, la memoria decia lo contrario).
+- Para binarios grandes relayados manualmente via chat -> NAS, la regla practica es: si el base64 no cabe comodo en una sola llamada de escritura (ordenes de unos pocos KB), reducir el archivo en origen (resize/quantize) en vez de trocearlo en múltiples llamadas -- trocear aumenta el riesgo de corrupcion silenciosa y es dificil de depurar (el error solo aparece al decodificar, lejos de la causa).
+- Verificar SIEMPRE el tamaño en bytes de un archivo binario recién escrito en el NAS (`wc -c`) contra el tamaño esperado antes de decodificar/usar -- deteccion barata de corrupcion de transferencia.
+- Cuando el usuario pide un cambio de negocio (ej. "deberian ser casas de 10+ habitaciones") que afecta a la capa de datos, propagar el cambio en las 3 capas a la vez en el mismo commit: `store.py` (SQL), `api/main.py` (contrato HTTP), `web/dist/index.html` (UI) -- evita quedar con capas desincronizadas.
 
 ## Pendientes operativos (para arrancar la proxima sesion)
 
 - [ ] Leer este HANDOFF y CLAUDE.md del proyecto.
-- [ ] Preguntar al usuario si ya corrigio la ruta `gav.ruizespana.com` -> 8400 en Cloudflare.
-- [ ] Verificar que `casa-finder-api-1` y `casa-finder-web-1` siguen arriba: `docker ps --filter name=casa-finder` (usar IP LAN, no localhost).
-- [ ] Si la ruta Cloudflare ya esta corregida, probar `https://gav.ruizespana.com` en un navegador real.
-- [ ] (Opcional) Poblar `data/casas.db` con mas regiones.
-- [ ] (Opcional) Bajar `image0.png` (logo Hokusai) cuando el usuario lo apruebe.
+- [ ] Verificar que `casa-finder-api-1` y `casa-finder-web-1` siguen arriba (`docker ps --filter name=casa-finder`, IP LAN no localhost).
+- [ ] Preguntar al usuario si ya corrigio manualmente la ruta Cloudflare `gav.ruizespana.com` -> 8400.
+- [ ] Empezar VRBO: investigar anti-bot antes de escribir codigo (ver "Proximo paso exacto").
+- [ ] Tras VRBO (o en paralelo si es rapido): valorar los portales "faciles" (clubrural, gitedegroupe, somrurals, calarquer).
 
 ## Estado actual del repo
 
 ```
 /volume1/docker/casa-finder/
 ├── .gitignore
-├── CLAUDE.md                              (actualizado sesion 5)
+├── CLAUDE.md
 ├── HANDOFF.md                             (este archivo)
 ├── README.md
-├── docker-compose.yml                     (scraper + api + web, sesion 5)
+├── docker-compose.yml                     (scraper + api + web)
 ├── scraper/
 │   ├── Dockerfile
-│   ├── requirements.txt                   (+ brotli)
+│   ├── requirements.txt
 │   ├── __init__.py
 │   ├── models.py
-│   ├── store.py                           (+ funciones de consulta)
+│   ├── store.py                           (+ filtro min_bedrooms, sesion 6)
 │   ├── run.py
 │   ├── seeds_import.py
 │   └── portals/
 │       ├── __init__.py
 │       ├── base.py
-│       └── escapadarural.py               (fix ancestros + tope paginas)
+│       └── escapadarural.py               (unico portal implementado)
 ├── api/
 │   ├── __init__.py
-│   ├── main.py
+│   ├── main.py                            (+ min_bedrooms, sesion 6)
 │   ├── requirements.txt
 │   └── Dockerfile
-├── web/                                   (NUEVO sesion 5)
+├── web/
 │   ├── dist/
-│   │   └── index.html
+│   │   ├── index.html                     (logo + filtro habitaciones, sesion 6)
+│   │   └── assets/
+│   │       └── logo.png                   (NUEVO sesion 6, sello Hokusai)
 │   ├── nginx.conf
 │   └── Dockerfile
 └── data/                                  (gitignored)
@@ -174,7 +132,8 @@ Nada bloqueante para el codigo. Los 3 servicios (`scraper` on-demand, `api`, `we
 Adicionalmente en el PC del user:
 ```
 C:\Cowork\IA-local-NAS\casa-finder-design-assets\logos\
-└── image1.png                          (logo 2: historico viajes GAV)
+├── image0.png                          (logo sello Hokusai -- el que se usa en la web)
+└── image1.png                          (logo historico viajes GAV -- no usado en la web)
 ```
 
 ## Servicios corriendo ahora mismo en el NAS
@@ -186,8 +145,9 @@ C:\Cowork\IA-local-NAS\casa-finder-design-assets\logos\
 
 (`scraper` no queda corriendo -- es un CLI de un solo uso via `docker compose run --rm scraper`.)
 
-## Commits de esta sesion (sesion 5)
+## Commits de esta sesion (sesion 6)
 
-- `3817132` -- feat(web): paso 4 -- web publica Alpine.js + nginx sobre la API.
+- `d5b14c4` -- feat(web): logo sello Hokusai en cabecera + corrige subtitulo.
+- `04a2de7` -- feat(filters): filtra por habitaciones minimas (10 por defecto) y muestra banos.
 
-Pusheado a `origin/main`.
+Ambos pusheados a `origin/main`.
