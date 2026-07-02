@@ -357,6 +357,7 @@ def _listings_where(
     *,
     min_capacity: int | None = None,
     max_capacity: int | None = None,
+    min_bedrooms: int | None = None,
     region: str | None = None,
     country: str | None = None,
     portal: str | None = None,
@@ -373,6 +374,9 @@ def _listings_where(
     if max_capacity is not None:
         clauses.append("capacity_max <= :max_capacity")
         params["max_capacity"] = max_capacity
+    if min_bedrooms is not None:
+        clauses.append("(bedrooms IS NOT NULL AND bedrooms >= :min_bedrooms)")
+        params["min_bedrooms"] = min_bedrooms
     if region:
         clauses.append("region LIKE :region")
         params["region"] = f"%{region}%"
@@ -395,8 +399,9 @@ def _listings_where(
 def list_listings(
     conn: sqlite3.Connection,
     *,
-    min_capacity: int | None = 20,
+    min_capacity: int | None = None,
     max_capacity: int | None = None,
+    min_bedrooms: int | None = 10,
     region: str | None = None,
     country: str | None = None,
     portal: str | None = None,
@@ -404,10 +409,16 @@ def list_listings(
     limit: int = 50,
     offset: int = 0,
 ) -> list[sqlite3.Row]:
-    """Lista listings con filtros opcionales, ordenados por mas recientes."""
+    """Lista listings con filtros opcionales, ordenados por mas recientes.
+
+    Filtro por defecto: min_bedrooms=10 (las casas GAV son para grupos
+    grandes; el numero de habitaciones es un proxy mas fiable que la
+    capacidad publicada por el portal, que a menudo incluye supletorias).
+    """
     where_sql, params = _listings_where(
         min_capacity=min_capacity,
         max_capacity=max_capacity,
+        min_bedrooms=min_bedrooms,
         region=region,
         country=country,
         portal=portal,
@@ -425,8 +436,9 @@ def list_listings(
 def count_listings_filtered(
     conn: sqlite3.Connection,
     *,
-    min_capacity: int | None = 20,
+    min_capacity: int | None = None,
     max_capacity: int | None = None,
+    min_bedrooms: int | None = 10,
     region: str | None = None,
     country: str | None = None,
     portal: str | None = None,
@@ -437,6 +449,7 @@ def count_listings_filtered(
     where_sql, params = _listings_where(
         min_capacity=min_capacity,
         max_capacity=max_capacity,
+        min_bedrooms=min_bedrooms,
         region=region,
         country=country,
         portal=portal,

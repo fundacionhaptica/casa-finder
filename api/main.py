@@ -183,8 +183,11 @@ def health() -> HealthOut:
 
 @app.get("/listings", response_model=ListingsPage)
 def get_listings(
-    min_capacity: int | None = Query(default=20, ge=1, description="Plazas minimas"),
+    min_capacity: int | None = Query(default=None, ge=1, description="Plazas minimas"),
     max_capacity: int | None = Query(default=None, ge=1),
+    min_bedrooms: int | None = Query(
+        default=10, ge=1, description="Habitaciones minimas (filtro principal para grupos grandes)"
+    ),
     region: str | None = Query(default=None, description="Coincidencia parcial, ej 'catalu'"),
     country: str | None = Query(default=None, description="Codigo ISO, ej 'ES'"),
     portal: str | None = Query(default=None, description="Filtrar por portal de origen"),
@@ -197,6 +200,7 @@ def get_listings(
             conn,
             min_capacity=min_capacity,
             max_capacity=max_capacity,
+            min_bedrooms=min_bedrooms,
             region=region,
             country=country,
             portal=portal,
@@ -208,6 +212,7 @@ def get_listings(
             conn,
             min_capacity=min_capacity,
             max_capacity=max_capacity,
+            min_bedrooms=min_bedrooms,
             region=region,
             country=country,
             portal=portal,

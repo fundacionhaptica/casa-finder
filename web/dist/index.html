@@ -198,8 +198,8 @@
 
 <div class="filters">
   <label>
-    Capacidad mínima
-    <input type="number" min="1" x-model.number="filters.min_capacity" @keyup.enter="load()">
+    Habitaciones mínimas
+    <input type="number" min="1" x-model.number="filters.min_bedrooms" @keyup.enter="load()">
   </label>
   <label>
     Región (parcial)
@@ -238,7 +238,7 @@
         <div class="meta-row">
           <span x-show="item.capacity_max">👥 hasta <span x-text="item.capacity_max"></span> pax</span>
           <span x-show="item.bedrooms">🛏️ <span x-text="item.bedrooms"></span> hab.</span>
-          <span x-show="item.bathrooms">🛁 <span x-text="item.bathrooms"></span> baños</span>
+          <span>🛁 <span x-text="item.bathrooms ?? 'N/D'"></span> baños<span x-show="bathRatio(item)"> (<span x-text="bathRatio(item)"></span> baño/hab.)</span></span>
         </div>
         <div class="price" x-show="item.price_per_night">
           <span x-text="formatPrice(item.price_per_night, item.price_currency)"></span> <small>/ noche</small>
@@ -267,7 +267,7 @@ function listingsApp() {
       '<svg xmlns="http://www.w3.org/2000/svg" width="260" height="160"><rect width="100%" height="100%" fill="%23ddd"/></svg>'
     ),
     filters: {
-      min_capacity: 20,
+      min_bedrooms: 10,
       region: '',
       max_price_per_night: null,
     },
@@ -290,6 +290,11 @@ function listingsApp() {
       return /arag/i.test(r);
     },
 
+    bathRatio(item) {
+      if (!item.bathrooms || !item.bedrooms) return null;
+      return (item.bathrooms / item.bedrooms).toFixed(2);
+    },
+
     formatPrice(value, currency) {
       if (value === null || value === undefined) return '';
       const symbol = currency === 'EUR' ? '€' : (currency || '');
@@ -297,7 +302,7 @@ function listingsApp() {
     },
 
     reset() {
-      this.filters = { min_capacity: 20, region: '', max_price_per_night: null };
+      this.filters = { min_bedrooms: 10, region: '', max_price_per_night: null };
       this.load();
     },
 
@@ -305,7 +310,7 @@ function listingsApp() {
       this.loading = true;
       this.error = null;
       const params = new URLSearchParams();
-      if (this.filters.min_capacity) params.set('min_capacity', this.filters.min_capacity);
+      if (this.filters.min_bedrooms) params.set('min_bedrooms', this.filters.min_bedrooms);
       if (this.filters.region) params.set('region', this.filters.region);
       if (this.filters.max_price_per_night) params.set('max_price_per_night', this.filters.max_price_per_night);
       params.set('limit', 100);
