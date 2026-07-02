@@ -7,6 +7,10 @@
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <style>
   :root {
+    --brand-blue: #2f5f92;
+    --brand-blue-dark: #23486f;
+    --brand-teal: #2b7c90;
+    --brand-teal-dark: #205f6f;
     --aragon-accent: #b8863b;
   }
   * { box-sizing: border-box; }
@@ -17,7 +21,7 @@
     color: #2b2b2b;
   }
   header {
-    background: #23324a;
+    background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-teal) 100%);
     color: #fff;
     padding: 1.5rem 1rem;
     text-align: center;
@@ -31,9 +35,10 @@
     width: 64px;
     object-fit: contain;
     border-radius: 8px;
+    background: #fff;
   }
   header h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
-  header p { margin: 0; opacity: 0.8; font-size: 0.9rem; }
+  header p { margin: 0; opacity: 0.85; font-size: 0.9rem; }
 
   .filters {
     max-width: 1100px;
@@ -50,24 +55,26 @@
     font-size: 0.8rem;
     color: #555;
     gap: 0.25rem;
+    flex: 1 1 130px;
   }
   .filters input {
     padding: 0.5rem 0.6rem;
     border: 1px solid #ccc;
     border-radius: 6px;
     font-size: 0.95rem;
-    min-width: 130px;
+    min-width: 0;
+    width: 100%;
   }
   .filters button {
-    padding: 0.55rem 1rem;
+    padding: 0.6rem 1rem;
     border: none;
     border-radius: 6px;
-    background: #23324a;
+    background: var(--brand-teal);
     color: #fff;
     cursor: pointer;
     font-size: 0.9rem;
   }
-  .filters button:hover { background: #33456a; }
+  .filters button:hover { background: var(--brand-teal-dark); }
 
   .status-bar {
     max-width: 1100px;
@@ -153,7 +160,7 @@
     margin-top: auto;
     font-weight: 600;
     font-size: 1.05rem;
-    color: #23324a;
+    color: var(--brand-blue-dark);
   }
   .price small {
     font-weight: 400;
@@ -162,7 +169,7 @@
   }
   .card a.view-link {
     font-size: 0.82rem;
-    color: #23324a;
+    color: var(--brand-blue-dark);
     text-decoration: none;
     border: 1px solid #ccc;
     border-radius: 6px;
@@ -185,6 +192,31 @@
     font-size: 0.75rem;
     color: #999;
     padding: 1rem;
+  }
+
+  /* Móvil: pantallas pequeñas */
+  @media (max-width: 640px) {
+    header { padding: 1.1rem 0.75rem; }
+    header img.logo { height: 48px; width: 48px; }
+    header h1 { font-size: 1.2rem; }
+    header p { font-size: 0.8rem; }
+
+    .filters {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .filters label { flex: 1 1 auto; }
+    .filters button { width: 100%; }
+
+    .grid {
+      grid-template-columns: 1fr;
+      margin-top: 0.75rem;
+    }
+    .card img { height: 180px; }
+
+    .status-bar, .aragon-banner { font-size: 0.8rem; }
   }
 </style>
 </head>
