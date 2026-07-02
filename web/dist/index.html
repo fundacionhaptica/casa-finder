@@ -21,6 +21,16 @@
     color: #fff;
     padding: 1.5rem 1rem;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  header img.logo {
+    height: 64px;
+    width: 64px;
+    object-fit: contain;
+    border-radius: 8px;
   }
   header h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
   header p { margin: 0; opacity: 0.8; font-size: 0.9rem; }
@@ -181,8 +191,9 @@
 <body x-data="listingsApp()" x-init="load()">
 
 <header>
+  <img class="logo" src="/assets/logo.png" alt="Logo GAV">
   <h1>GAV · La Gran Aventura del Verano · Fam. España</h1>
-  <p>Buscador de casas rurales para grupos grandes — futuras escapadas (GAV27+)</p>
+  <p>Buscador de casas para las GAVs de la familia España Morales</p>
 </header>
 
 <div class="filters">
