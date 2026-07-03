@@ -36,6 +36,7 @@ from typing import Type
 from .models import SearchQuery
 from .portals.base import BasePortal
 from .portals.escapadarural import EscapadaRural
+from .portals.gitedegroupe import GiteDeGroupe
 from .store import DEFAULT_DB_PATH, finish_run, session, start_run, upsert_listing
 
 log = logging.getLogger("scraper.run")
@@ -43,6 +44,7 @@ log = logging.getLogger("scraper.run")
 # Registry de portales disponibles. Slug → clase.
 PORTAL_REGISTRY: dict[str, Type[BasePortal]] = {
     EscapadaRural.slug: EscapadaRural,
+    GiteDeGroupe.slug: GiteDeGroupe,
 }
 
 

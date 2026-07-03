@@ -59,7 +59,7 @@ SEED_DECISIONS = ("chosen", "ruled-out", "pending", "unknown")
 _MULTI_UNIT_NAME_PATTERNS = [
     re.compile(r"\bcasas\b", re.IGNORECASE),
     re.compile(r"\bapartamentos\b", re.IGNORECASE),
-    re.compile(r"\bhotel(?:es)?\b", re.IGNORECASE),
+    re.compile(r"\bh[ooô]tel(?:s|es)?\b", re.IGNORECASE),
 ]
 
 
