@@ -76,6 +76,15 @@
   }
   .filters button:hover { background: var(--brand-teal-dark); }
 
+  .filters-note {
+    max-width: 1100px;
+    margin: 0.4rem auto 0;
+    padding: 0 1rem;
+    font-size: 0.75rem;
+    color: #888;
+    font-style: italic;
+  }
+
   .status-bar {
     max-width: 1100px;
     margin: 0.75rem auto 0;
@@ -187,6 +196,42 @@
   }
   .error-state { color: #a33; }
 
+  .vrbo-cta {
+    max-width: 1100px;
+    margin: 0.5rem auto 2rem;
+    padding: 1.25rem 1rem;
+    text-align: center;
+  }
+  .vrbo-cta p {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    color: #666;
+  }
+  .vrbo-cta .vrbo-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+  }
+  .vrbo-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-teal) 100%);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+    box-shadow: 0 2px 8px rgba(47,95,146,0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .vrbo-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(47,95,146,0.45);
+  }
+
   footer {
     text-align: center;
     font-size: 0.75rem;
@@ -217,6 +262,9 @@
     .card img { height: 180px; }
 
     .status-bar, .aragon-banner { font-size: 0.8rem; }
+
+    .vrbo-cta .vrbo-buttons { flex-direction: column; }
+    .vrbo-btn { justify-content: center; }
   }
 </style>
 </head>
@@ -241,8 +289,19 @@
     Precio máx/noche (€)
     <input type="number" min="0" x-model.number="filters.max_price_per_night" @keyup.enter="load()">
   </label>
+  <label>
+    Entrada
+    <input type="date" x-model="filters.checkin">
+  </label>
+  <label>
+    Salida
+    <input type="date" x-model="filters.checkout">
+  </label>
   <button @click="load()">Filtrar</button>
   <button @click="reset()" style="background:#888;">Limpiar</button>
+</div>
+<div class="filters-note">
+  Las fechas de entrada/salida solo se usan para el botón de búsqueda en VRBO de abajo — no filtran las casas de este listado, porque no tenemos datos de disponibilidad por fecha de escapadarural y el resto de portales propios.
 </div>
 
 <div class="status-bar" x-show="!loading && !error">
@@ -284,6 +343,14 @@
   </template>
 </div>
 
+<div class="vrbo-cta">
+  <p>¿No encuentras lo que buscas aquí? Prueba directamente en VRBO con los filtros de la familia ya montados (20+ huéspedes<span x-show="filters.checkin || filters.checkout">, fechas incluidas</span>):</p>
+  <div class="vrbo-buttons">
+    <a class="vrbo-btn" :href="vrboUrl('España')" target="_blank" rel="noopener">🏡 Buscar en VRBO — España</a>
+    <a class="vrbo-btn" :href="vrboUrl('Sur de Francia')" target="_blank" rel="noopener">🏡 Buscar en VRBO — Sur de Francia</a>
+  </div>
+</div>
+
 <footer>
   casa-finder · datos de escapadarural (más portales próximamente) · <span x-text="new Date().getFullYear()"></span>
 </footer>
@@ -302,6 +369,8 @@ function listingsApp() {
       min_bedrooms: 10,
       region: '',
       max_price_per_night: null,
+      checkin: '',
+      checkout: '',
     },
 
     get aragonCount() {
@@ -333,8 +402,30 @@ function listingsApp() {
       return `${value.toLocaleString('es-ES')} ${symbol}`;
     },
 
+    // Enlace de busqueda a VRBO con los filtros fijos de la familia GAV
+    // (20+ huespedes) y, si se han elegido, las fechas de entrada/salida.
+    // Parametros basados en URLs de VRBO reales usadas por la familia
+    // (destination + destType=MARKET + adults + d1/d2). No verificado en
+    // vivo porque VRBO bloquea peticiones automatizadas (Akamai) -- probar
+    // el enlace una vez en el navegador y ajustar si no aterriza bien.
+    vrboUrl(destination) {
+      const params = new URLSearchParams();
+      params.set('destination', destination);
+      params.set('destType', 'MARKET');
+      params.set('adults', '20');
+      if (this.filters.checkin) {
+        params.set('d1', this.filters.checkin);
+        params.set('chkin', this.filters.checkin);
+      }
+      if (this.filters.checkout) {
+        params.set('d2', this.filters.checkout);
+        params.set('chkout', this.filters.checkout);
+      }
+      return `https://www.vrbo.com/es-es/search?${params.toString()}`;
+    },
+
     reset() {
-      this.filters = { min_bedrooms: 10, region: '', max_price_per_night: null };
+      this.filters = { min_bedrooms: 10, region: '', max_price_per_night: null, checkin: '', checkout: '' };
       this.load();
     },
 
