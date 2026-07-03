@@ -21,11 +21,20 @@ Decisiones:
 - Las funciones de consulta (list_listings, get_listing, list_seeds, etc.)
   viven aqui junto al resto de la capa de persistencia — la API (paso 3) es
   solo una capa HTTP fina encima, sin logica SQL propia.
+- Filtro multi-unidad (2026-07-03): la familia quiere alquilar UNA casa
+  entera para todos juntos, no un hotel ni un complejo de varias casas o
+  apartamentos independientes. Los listings cuyo nombre indica esto
+  ("Casas ...", "Apartamentos ..." en plural, "Hotel ...") se excluyen
+  SIEMPRE de list_listings/count_listings_filtered via la funcion SQL
+  registrada is_multi_unit_name(). Confirmado con datos reales: estos
+  listings tienen bedrooms anormalmente altos (23-40) porque agregan varias
+  unidades bajo una sola ficha del portal.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -39,6 +48,27 @@ DEFAULT_DB_PATH = Path("/app/data/casas.db")
 
 # Valores validos para seeds.decision (no enforced por SQLite, solo doc)
 SEED_DECISIONS = ("chosen", "ruled-out", "pending", "unknown")
+
+# Nombres que indican que el listing es en realidad un complejo de varias
+# unidades (varias casas, varios apartamentos, o un hotel) y no una unica
+# casa de alquiler integro para un solo grupo/familia. Pedido explicito del
+# usuario 2026-07-03: "donde ponga casas (plural), hotel, apartamentos
+# (plural)... no nos interesa". Solo disparan las formas explicitas que
+# menciono (plural de casas/apartamentos, hotel en cualquier numero) --
+# 'Casa' o 'Apartamento' en singular siguen sirviendo.
+_MULTI_UNIT_NAME_PATTERNS = [
+    re.compile(r"\bcasas\b", re.IGNORECASE),
+    re.compile(r"\bapartamentos\b", re.IGNORECASE),
+    re.compile(r"\bhotel(?:es)?\b", re.IGNORECASE),
+]
+
+
+def _is_multi_unit_name(name: str | None) -> bool:
+    """True si el nombre sugiere varias unidades o un hotel, en vez de una
+    unica casa de alquiler integro para toda la familia."""
+    if not name:
+        return False
+    return any(p.search(name) for p in _MULTI_UNIT_NAME_PATTERNS)
 
 
 SCHEMA_SQL = """
@@ -136,6 +166,7 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.create_function("is_multi_unit_name", 1, _is_multi_unit_name)
     return conn
 
 
@@ -392,6 +423,10 @@ def _listings_where(
         )
         params["max_price_per_night"] = max_price_per_night
 
+    # Excluir SIEMPRE complejos multi-unidad (varias casas/apartamentos,
+    # hoteles) -- la familia quiere una unica casa entera para todos juntos.
+    clauses.append("is_multi_unit_name(name) = 0")
+
     where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     return where_sql, params
 
@@ -414,6 +449,7 @@ def list_listings(
     Filtro por defecto: min_bedrooms=10 (las casas GAV son para grupos
     grandes; el numero de habitaciones es un proxy mas fiable que la
     capacidad publicada por el portal, que a menudo incluye supletorias).
+    Excluye siempre complejos multi-unidad (ver _listings_where).
     """
     where_sql, params = _listings_where(
         min_capacity=min_capacity,

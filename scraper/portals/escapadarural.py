@@ -25,6 +25,13 @@ Fragilidades conocidas:
   una lista vacia o 404. Por eso el bucle de paginacion tiene un tope duro
   MAX_PAGES_PER_REGION ademas del corte por `empty_streak` — no podemos
   confiar solo en "pagina vacia" para saber que hemos llegado al final.
+- Filtro multi-unidad (2026-07-03): algunas fichas de escapadarural agregan
+  varias casas o apartamentos independientes (o son un hotel) bajo un unico
+  listing -- se detectan por nombres tipo "Casas ...", "Apartamentos ..."
+  (plural) e "Hotel ...", y suelen tener un numero de dormitorios anormalmente
+  alto (23-40) porque suman varias unidades. La familia quiere alquilar una
+  UNICA casa entera para todos juntos, asi que estos se descartan en
+  _build_listing usando la misma funcion que la capa API (scraper.store).
 """
 
 from __future__ import annotations
@@ -39,6 +46,7 @@ from bs4 import BeautifulSoup, Tag
 from pydantic import ValidationError
 
 from ..models import Listing, SearchQuery
+from ..store import _is_multi_unit_name
 from .base import BasePortal
 
 log = logging.getLogger(__name__)
@@ -345,6 +353,14 @@ class EscapadaRural(BasePortal):
         if not name:
             title = soup.find("title")
             name = title.get_text(strip=True) if title else card["slug"]
+
+        # Filtro multi-unidad (2026-07-03): complejos de varias casas,
+        # apartamentos o un hotel no sirven -- la familia quiere alquilar
+        # una unica casa entera. Misma funcion que usa la capa API
+        # (scraper.store) para que el criterio sea identico en ambos sitios.
+        if _is_multi_unit_name(name):
+            log.info("descartado por nombre multi-unidad: %s (%s)", name, href)
+            return None
 
         # Localidad: meta og:title suele ser "NOMBRE en LOCALIDAD"
         location = card["province"]
